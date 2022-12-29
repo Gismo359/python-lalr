@@ -1,0 +1,222 @@
+IF ::= "if"
+ELSE ::= "else"
+FOR ::= "for"
+IN ::= "in"
+WHILE ::= "while"
+STRUCT ::= "struct"
+
+DOUBLECOLON ::= "::"
+SEMICOLON ::= ";"
+COLON ::= ":"
+DOT ::= "\\."
+COMMA ::= ","
+
+OP ::= "\\("
+CP ::= "\\)"
+OB ::= "\\["
+CB ::= "\\]"
+OC ::= "\\{"
+CC ::= "\\}"
+
+ASS_IGN ::= "="
+ASS_ADD ::= "\\+="
+ASS_SUB ::= "-="
+ASS_MUL ::= "\\*="
+ASS_DIV ::= "/="
+ASS_SHL ::= "<<="
+ASS_SHR ::= ">>="
+
+BIT_LEFT  ::= "<<"
+BIT_RIGHT ::= ">>"
+
+CMP_IE ::= "<=>"
+
+CMP_LT ::= "<"
+CMP_GT ::= ">"
+CMP_LE ::= "<="
+CMP_GE ::= ">="
+
+CMP_EQ ::= "=="
+CMP_NE ::= "!="
+
+BIT_AND ::= "&"
+BIT_XOR ::= "\\^"
+BIT_OR  ::= "\\|"
+
+LOG_AND ::= "&&"
+LOG_OR  ::= "\\|\\|"
+
+MATH_ADD ::= "\\+"
+MATH_SUB ::= "-"
+
+MATH_MUL ::= "\\*"
+MATH_DIV ::= "/"
+MATH_MOD ::= "%"
+
+DEC ::= "--"
+INC ::= "\\+\\+"
+
+IDENTIFIER ::= "\w+"
+
+LIT_S8  ::= "u8\"([^\\\"]|\\.)*\""
+LIT_S16 ::= "u16\"([^\\\"]|\\.)*\""
+LIT_S32 ::= "u32\"([^\\\"]|\\.)*\""
+
+LIT_C8  ::= "u8\'([^\\\']|\\.)*\'"
+LIT_C16 ::= "u16\'([^\\\']|\\.)*\'"
+LIT_C32 ::= "u32\'([^\\\']|\\.)*\'"
+
+LIT_I8  ::= "\d+i8"
+LIT_I16 ::= "\d+i16"
+LIT_I32 ::= "\d+i32"
+LIT_I64 ::= "\d+i64"
+
+LIT_U8  ::= "\d+u8"
+LIT_U16 ::= "\d+u16"
+LIT_U32 ::= "\d+u32"
+LIT_U64 ::= "\d+u64"
+
+LIT_F32 ::= "(\d+.\d+|\d+.|.\d+|\d+)f32"
+LIT_F64 ::= "(\d+.\d+|\d+.|.\d+|\d+)f64"
+
+<statement_list> ::= <statement_list> <statement>
+<statement_list> ::= <statement>
+
+<statement> ::= <expression> SEMICOLON
+<statement> ::= <block>
+<statement> ::= <if>
+<statement> ::= <for>
+<statement> ::= <while>
+<statement> ::= <struct>
+<statement> ::= <function>
+
+<block> ::= OC <statement_list> CC
+<block> ::= OC CC
+
+<if> ::= IF OP <expression> CP <statement>
+<if> ::= IF OP <expression> CP <statement> ELSE <statement>
+
+<for> ::= FOR OP <expression> IN <expression> CP <statement>
+
+<while> ::= WHILE OP <expression> CP <statement>
+
+<struct> ::= STRUCT <expression> <block>
+
+<function> ::= <expression> <block>
+
+<expression> ::= <assignment>
+
+# Assignment operators ::= += -= /= *= >>= <<=
+<assignment> ::= <expression> ASS_IGN <mapping>
+<assignment> ::= <expression> ASS_ADD <mapping>
+<assignment> ::= <expression> ASS_SUB <mapping>
+<assignment> ::= <expression> ASS_MUL <mapping>
+<assignment> ::= <expression> ASS_DIV <mapping>
+<assignment> ::= <expression> ASS_SHL <mapping>
+<assignment> ::= <expression> ASS_SHR <mapping>
+<assignment> ::= <mapping>
+
+<mapping> ::= <mapping> COLON <bit_shift>
+<mapping> ::= <bit_shift>
+
+# Bitwise << >>
+<bit_shift> ::= <bit_shift> BIT_LEFT  <spaceship>
+<bit_shift> ::= <bit_shift> BIT_RIGHT <spaceship>
+<bit_shift> ::= <spaceship>
+
+# Spaceship <->
+<spaceship> ::= <spaceship> CMP_IE <comparison>
+<spaceship> ::= <comparison>
+
+# Normal comparison < > <= >=
+<comparison> ::= <comparison> CMP_LT <equality>
+<comparison> ::= <comparison> CMP_GT <equality>
+<comparison> ::= <comparison> CMP_LE <equality>
+<comparison> ::= <comparison> CMP_GE <equality>
+<comparison> ::= <equality>
+
+# Equality ::== !=
+<equality> ::= <equality> CMP_EQ <bit_and>
+<equality> ::= <equality> CMP_NE <bit_and>
+<equality> ::= <bit_and>
+
+# Bitwise &
+<bit_and> ::= <bit_and> BIT_AND <bit_xor>
+<bit_and> ::= <bit_xor>
+
+# Bitwise ^
+<bit_xor> ::= <bit_xor> BIT_XOR <bit_or>
+<bit_xor> ::= <bit_or>
+
+# Bitwise |
+<bit_or> ::= <bit_or> BIT_OR <log_and>
+<bit_or> ::= <log_and>
+
+# Logical &&
+<log_and> ::= <log_and> LOG_AND <log_or>
+<log_and> ::= <log_or>
+
+# Logical ||
+<log_or> ::= <log_or> LOG_OR <sum>
+<log_or> ::= <sum>
+
+# Arithmetic + -
+<sum> ::= <sum> MATH_ADD <product>
+<sum> ::= <sum> MATH_SUB <product>
+<sum> ::= <product>
+
+# Arithmetic * / %
+<product> ::= <product> MATH_MUL <base_expression>
+<product> ::= <product> MATH_DIV <base_expression>
+<product> ::= <product> MATH_MOD <base_expression>
+<product> ::= <base_expression>
+
+<base_expression> ::= IDENTIFIER
+
+<base_expression> ::= LIT_S8
+<base_expression> ::= LIT_S16
+<base_expression> ::= LIT_S32
+
+<base_expression> ::= LIT_C8
+<base_expression> ::= LIT_C16
+<base_expression> ::= LIT_C32
+
+<base_expression> ::= LIT_I8
+<base_expression> ::= LIT_I16
+<base_expression> ::= LIT_I32
+<base_expression> ::= LIT_I64
+
+<base_expression> ::= LIT_U8
+<base_expression> ::= LIT_U16
+<base_expression> ::= LIT_U32
+<base_expression> ::= LIT_U64
+
+<base_expression> ::= LIT_F32
+<base_expression> ::= LIT_F64
+
+# Unary * & + -
+<base_expression> ::= BIT_AND  <base_expression>
+<base_expression> ::= MATH_ADD <base_expression>
+<base_expression> ::= MATH_SUB <base_expression>
+<base_expression> ::= MATH_MUL <base_expression>
+
+# Post and pre increment/decrement
+<base_expression> ::= INC <base_expression>
+<base_expression> ::= DEC <base_expression>
+<base_expression> ::= <base_expression> INC
+<base_expression> ::= <base_expression> DEC
+
+<base_expression> ::= <base_expression> DOT         IDENTIFIER
+<base_expression> ::= <base_expression> DOUBLECOLON IDENTIFIER
+
+# Function call stuff [] ()
+<base_expression> ::= <base_expression> OB <argument_list> CB
+<base_expression> ::= <base_expression> OP <argument_list> CP
+<base_expression> ::= <base_expression> OB CB
+<base_expression> ::= <base_expression> OP CP
+
+<argument_list> ::= <argument_list> COMMA <expression>
+<argument_list> ::= <expression>
+
+# Parenthesized expression ()
+<base_expression> ::= OP <expression> CP
