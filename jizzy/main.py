@@ -33,6 +33,7 @@ parser.parse(
     """
     main: void (){
         a + b.c;
+        c.b + a * d - -1;
     }   
     """
 )

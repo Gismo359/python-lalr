@@ -4,6 +4,7 @@ FOR ::= "for"
 IN ::= "in"
 WHILE ::= "while"
 STRUCT ::= "struct"
+RETURN ::= "return"
 
 DOUBLECOLON ::= "::"
 SEMICOLON ::= ";"
@@ -82,6 +83,7 @@ LIT_F64 ::= "(\d+.\d+|\d+.|.\d+|\d+)f64"
 <statement_list> ::= <statement_list> <statement>
 <statement_list> ::= <statement>
 
+<statement> ::= RETURN <expression> SEMICOLON
 <statement> ::= <expression> SEMICOLON
 <statement> ::= <block>
 <statement> ::= <if>

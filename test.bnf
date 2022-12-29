@@ -1,6 +1,7 @@
  -> statement_list
 statement_list -> statement_list statement
 statement_list -> statement
+statement -> RETURN expression SEMICOLON
 statement -> expression SEMICOLON
 statement -> block
 statement -> if

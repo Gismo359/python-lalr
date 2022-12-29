@@ -9,8 +9,8 @@ from jizzy.tokenizer import tokenize
 from collections import defaultdict
 from dataclasses import dataclass, field
 from numpy.typing import NDArray
-from enum import IntEnum, Enum
-from typing import Type, TypeVar, Callable, cast, Generic
+from enum import Enum
+from typing import Type, TypeVar, Callable, cast
 
 
 T = TypeVar("T")
@@ -28,79 +28,41 @@ class TokenType(Enum):
     STRING = r"\"([^\\\"]|\\.)*\""
 
 
-class ActionType(IntEnum):
-    SHIFT = 0
-    REDUCE = 1
-
-
 @cache
-@dataclass(frozen=True, order=True, slots=True)
-class TestTuple(Generic[T]):
-    values: tuple[T, ...]
-
-    def __hash__(self) -> int:
-        return id(self)
-
-
-@cache
-@dataclass(frozen=True, order=True, slots=True)
-class Action:
-    type: ActionType
-    value: int
-
-    def __hash__(self) -> int:
-        return id(self)
-
-
-@cache
-@dataclass(frozen=True, order=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class ClosureItem:
+    idx: int
     lhs: int
     rhs: tuple[int, ...]
     dot: int
     lookahead: frozenset[int]
 
-    def at_end(self) -> bool:
-        try:
-            self.rhs[self.dot]
-            return False
-        except IndexError:
-            return True
-        # return self.dot == len(self.rhs)
-
-    def almost_at_end(self) -> bool:
-        return self.dot == len(self.rhs) - 1
-
-    def current_symbol(self) -> int:
-        return self.rhs[self.dot]
-
-    def next_symbol(self) -> int:
-        return self.rhs[self.dot + 1]
-
+    @cache
     def next_item(self) -> ClosureItem:
-        return ClosureItem(lhs=self.lhs, rhs=self.rhs, dot=self.dot + 1, lookahead=self.lookahead)
+        return ClosureItem(idx=self.idx, lhs=self.lhs, rhs=self.rhs, dot=self.dot + 1, lookahead=self.lookahead)
 
     def __hash__(self) -> int:
         return id(self)
 
 
-@dataclass
+@dataclass(slots=True)
 class ShiftReduceParser:
     start_idx: int
     eof_idx: int
     name_to_idx: dict[str, int]
     idx_to_name: dict[int, str]
-    terminals: dict[int, str]
+    terminals: tuple[str, ...]
     nonterminals: tuple[tuple[int, tuple[int, ...]], ...]
-    rule_sets: dict[int, tuple[tuple[int, ...], ...]] = field(init=False)
-    firsts: dict[int, frozenset[int]] = field(init=False)
+    terminal_cutoff: int = field(init=False)
+    rule_sets: tuple[tuple[tuple[int, tuple[int, ...]], ...], ...] = field(init=False)
+    firsts: list[frozenset[int]] = field(init=False)
     final_automaton: NDArray[np.int16] = field(init=False)
 
     @cache
-    def default_closure(self, lhs: int, lookahead: frozenset[int]) -> TestTuple[ClosureItem, ...]:
+    def default_closure(self, lhs: int, lookahead: frozenset[int]) -> tuple[ClosureItem, ...]:
         return tuple(
-            ClosureItem(lhs=lhs, rhs=rhs, dot=0, lookahead=lookahead)
-            for rhs in self.rule_sets[lhs]
+            ClosureItem(idx=idx, lhs=lhs, rhs=rhs, dot=0, lookahead=lookahead)
+            for idx, rhs in self.rule_sets[lhs] if rhs is not None
         )
 
     @cache
@@ -123,34 +85,42 @@ class ShiftReduceParser:
 
             new_closure.setdefault(item_id, item)
 
-            if item.at_end():
+            try:
+                lhs = item.rhs[item.dot]
+            except IndexError:
                 continue
 
-            lhs = item.current_symbol()
-            if lhs in self.terminals:
+            if lhs < self.terminal_cutoff:
                 continue
 
-            if item.almost_at_end():
+            try:
+                next_symbol = item.rhs[item.dot + 1]
+                lookahead = self.firsts[next_symbol]
+            except IndexError:
                 lookahead = item.lookahead
-            else:
-                lookahead = self.firsts[item.next_symbol()]
 
-            stack.extend(self.default_closure(lhs, lookahead))
+            default_closure = self.default_closure(lhs, lookahead)
+            stack.extend(default_closure)
 
-        lookaheads: dict[tuple[int, tuple[int, ...], int], set[int]] = defaultdict(set)
-        for _, item in new_closure.items():
-            lookaheads[(item.lhs, item.rhs, item.dot)].update(item.lookahead)
+        lookaheads: dict[tuple[int, int], list[frozenset[int]]] = defaultdict(list)
+        for item in new_closure.values():
+            lookaheads[(item.idx, item.dot)].append(item.lookahead)
 
         return tuple(
             dict.fromkeys(
-                ClosureItem(lhs=lhs, rhs=rhs, dot=dot, lookahead=frozenset(lookahead))
-                for (lhs, rhs, dot), lookahead in lookaheads.items()
+                ClosureItem(
+                    idx,
+                    *self.nonterminals[idx],
+                    dot,
+                    frozenset.union(*lookahead)
+                )
+                for (idx, dot), lookahead in lookaheads.items()
             )
         )
 
     @cache
     def make_token_type(self) -> Type[Enum]:
-        return Enum("enum", {(f"group_{key}", value) for key, value in self.terminals.items()})  # type: ignore
+        return Enum("enum", {(f"group_{key}", value) for key, value in enumerate(self.terminals)})  # type: ignore
 
     def parse(self, text: str):
         token_type = self.make_token_type()
@@ -184,14 +154,16 @@ class ShiftReduceParser:
                 stack.append((action, symbol))
 
     def __post_init__(self):
-        rule_sets: dict[int, tuple[tuple[int, ...], ...]] = {}
+        rule_sets: list[tuple[tuple[int, tuple[int, ...]], ...]] = [None] * len(self.idx_to_name)
         for symbol in list(dict.fromkeys(key for key, _ in self.nonterminals)):
-            rule_sets[symbol] = tuple(rhs for lhs, rhs in self.nonterminals if symbol == lhs)
+            rule_sets[symbol] = tuple((idx, rhs) for idx, (lhs, rhs) in enumerate(self.nonterminals) if symbol == lhs)
 
-        firsts: dict[int, frozenset[int]] = {}
+        terminal_cutoff = len(self.terminals)
+
+        firsts: list[frozenset[int]] = []
         for symbol in self.idx_to_name:
-            if symbol in self.terminals:
-                firsts[symbol] = frozenset({symbol})
+            if symbol < terminal_cutoff:
+                firsts.append(frozenset({symbol}))
             else:
                 first_set = set()
 
@@ -204,35 +176,36 @@ class ShiftReduceParser:
 
                     first_passed.add(current)
 
-                    for r in rule_sets[current]:
+                    for _, r in rule_sets[current]:
                         first = r[0]
                         if first in first_stack:
                             continue
 
-                        if first in self.terminals:
+                        if first < terminal_cutoff:
                             first_set.add(first)
                         else:
                             first_stack.append(first)
 
-                firsts[symbol] = frozenset(first_set)
+                firsts.append(frozenset(first_set))
 
-        self.rule_sets = rule_sets
+        self.terminal_cutoff = terminal_cutoff
+        self.rule_sets = tuple(rule_sets)
         self.firsts = firsts
 
         initial_closure = self.default_closure(self.start_idx, frozenset({self.eof_idx}))
         initial_closure = self.expand_closure(initial_closure)
 
-        closures: dict[tuple[ClosureItem, ...], int] = {}
-        automaton: dict[int, dict[int, Action]] = defaultdict(dict)
+        default_state = np.zeros(len(self.idx_to_name), dtype=np.int16)
 
-        def closure_id(closure: tuple[ClosureItem, ...]) -> int:
-            return closures.setdefault(closure, len(closures))
+        closures: dict[tuple[ClosureItem, ...], int] = {}
+        automaton: dict[int, NDArray[np.int16]] = defaultdict(default_state.copy)
 
         closure_passed: set[int] = set()
         closure_stack: list[tuple[ClosureItem, ...]] = [initial_closure]
         while closure_stack:
-            current_closure = closure_stack.pop(0)
-            current_id = closure_id(current_closure)
+            fuck_austin = closure_stack.pop(0)
+
+            current_id = closures.setdefault(fuck_austin, len(closures))
             if current_id in closure_passed:
                 continue
 
@@ -240,108 +213,61 @@ class ShiftReduceParser:
 
             symbol_to_shift: defaultdict[int, list[ClosureItem]] = defaultdict(list)
             symbol_to_reduce: defaultdict[int, list[ClosureItem]] = defaultdict(list)
-            for item in current_closure:
+            for item in fuck_austin:
                 try:
-                    symbol = item.current_symbol()
-                    symbol_to_shift[symbol].append(item)
+                    symbol_to_shift[item.rhs[item.dot]].append(item)
                 except IndexError:
                     for symbol in item.lookahead:
                         symbol_to_reduce[symbol].append(item)
+
+            current_state = automaton[current_id]
+            for symbol, subclosure in symbol_to_reduce.items():
+                assert len(subclosure) == 1
+
+                item, = subclosure
+                current_state[symbol] = -item.idx - 1
 
             for symbol, subclosure in symbol_to_shift.items():
                 shifts: dict[ClosureItem, None] = dict.fromkeys(item.next_item() for item in subclosure)
 
                 new_closure = self.expand_closure(tuple(shifts))
 
-                automaton[current_id][symbol] = Action(
-                    type=ActionType.SHIFT,
-                    value=closure_id(new_closure) + 1
-                )
+                current_state[symbol] = closures.setdefault(new_closure, len(closures)) + 1
 
                 closure_stack.append(new_closure)
 
-            for symbol, subclosure in symbol_to_reduce.items():
-                assert len(subclosure) == 1
-
-                item, = subclosure
-                reduction = (item.lhs, item.rhs)
-
-                if symbol in automaton[current_id]:
-                    assert automaton[current_id][symbol].type is ActionType.SHIFT, f"Conflict {symbol} vs {automaton[current_id][symbol]}"
-
-                automaton[current_id][symbol] = Action(
-                    type=ActionType.REDUCE,
-                    value=self.nonterminals.index(reduction) + 1
-                )
-
             assert current_id in automaton
 
-        remap_indices: dict[int, int] = {}
-        remap_closures: dict[tuple[tuple[int, tuple[int, ...], int], ...], tuple[ClosureItem, ...]] = {}
+        remap_indices: NDArray[np.int16] = np.zeros(len(closures) + 1, dtype=np.int16)
+        remap_lookaheads: dict[tuple[tuple[int, int], ...], int] = {}
         for closure, idx in closures.items():
-            key = tuple((item.lhs, item.rhs, item.dot) for item in closure)
-            value = remap_closures.setdefault(key, closure)
-            if value is not closure:
-                assert all(
-                    (a.lhs, a.rhs, a.dot) == (b.lhs, b.rhs, b.dot)
-                    for a, b in zip(closure, value)
-                )
+            remap_indices[idx + 1] = remap_lookaheads.setdefault(
+                tuple((item.idx, item.dot) for item in closure),
+                len(remap_lookaheads) + 1
+            )
 
-                remap_closures[key] = tuple(
-                    ClosureItem(
-                        lhs=a.lhs,
-                        rhs=a.rhs,
-                        dot=a.dot,
-                        lookahead=a.lookahead | b.lookahead
-                    ) for a, b in zip(closure, value)
-                )
+        old_numpy_automaton = np.vstack(tuple(automaton.values()))
 
-            remap_indices.setdefault(idx, list(remap_closures).index(key))
+        remap_indices_sort_idx = np.argsort(remap_indices[1:])
+        remap_indices_sorted = remap_indices[1:][remap_indices_sort_idx]
+        _, remap_indices_counts = np.unique(remap_indices_sorted, return_counts=True)
 
-        new_automaton: dict[int, dict[int, Action]] = defaultdict(dict)
-        for old, new in remap_indices.items():
-            old_state = automaton[old]
-            new_state = new_automaton[new]
-            for symbol in self.idx_to_name:
-                if symbol not in old_state:
-                    continue
+        remap_indices_reverse = np.split(remap_indices_sort_idx, np.cumsum(remap_indices_counts))
 
-                old_action = old_state[symbol]
-                if old_action.type is ActionType.SHIFT:
-                    old_action = Action(
-                        type=ActionType.SHIFT,
-                        value=remap_indices[old_action.value - 1] + 1
-                    )
+        new_final_states_please_work = []
+        for old_indices in remap_indices_reverse[:-1]:
+            old_states = old_numpy_automaton[old_indices]
 
-                if symbol not in new_state:
-                    new_state[symbol] = old_action
+            shift_mask = (old_states >= 0)
+            shift_states = remap_indices[old_states * shift_mask]
+            reduce_states = old_states * np.logical_not(shift_mask)
 
-                new_action = new_state.setdefault(symbol, old_action)
-                if old_action is new_action:
-                    continue
+            shift_state = np.max(shift_states, axis=0)
+            reduce_state = np.min(reduce_states, axis=0)
 
-                if old_action.type is ActionType.SHIFT:
-                    if new_action.type is ActionType.SHIFT:
-                        assert old_action.value == new_action.value
-                    if new_action.type is ActionType.REDUCE:
-                        new_state[symbol] = old_action
-                if old_action.type is ActionType.REDUCE:
-                    if new_action.type is ActionType.REDUCE:
-                        assert old_action.value == new_action.value, "Reduce-reduce conflict"
+            new_final_states_please_work.append(np.where(shift_state > 0, shift_state, reduce_state))
 
-        automaton = new_automaton
-
-        final_automaton = np.zeros(shape=(len(automaton), len(self.idx_to_name)), dtype=np.int16)
-
-        for state, actions in automaton.items():
-            for symbol in self.idx_to_name:
-                if symbol not in actions:
-                    continue
-
-                action = actions[symbol]
-                final_automaton[state][symbol] = action.value if action.type is ActionType.SHIFT else -action.value
-
-        self.final_automaton = final_automaton
+        self.final_automaton = np.vstack(new_final_states_please_work)
 
     def __hash__(self) -> int:
         return id(self)
@@ -422,6 +348,6 @@ def parse(text: str) -> ShiftReduceParser:
         eof_idx=eof_idx,
         name_to_idx=name_to_idx,
         idx_to_name=idx_to_name,
-        terminals=terminals,
+        terminals=tuple(terminals.values()),
         nonterminals=tuple(nonterminals)
     )
