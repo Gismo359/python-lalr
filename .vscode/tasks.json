@@ -5,7 +5,7 @@
             "label": "Profile",
             "type": "austin",
             "args": [
-                "py", "-m", "jizzy.main"
+                "py", "-3.10", "-m", "jizzy.main"
             ]
         }
     ]
