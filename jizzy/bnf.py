@@ -1,5 +1,5 @@
 from __future__ import annotations
-from jizzy.tokenizer import tokenize
+from jizzy.tokenizer import Token, tokenize
 from numpy.typing import NDArray
 import regex
 import numpy as np
@@ -9,23 +9,10 @@ import functools
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from pyroaring import BitMap, FrozenBitMap
-from typing import Callable, Generic, Type, TypeVar, TypeAlias, cast
+from typing import Callable, Type, TypeVar, cast
 
 
 T = TypeVar("T")
-
-
-class _bitset(Generic[T], BitMap):
-    pass
-
-
-class _frozenbitset(Generic[T], FrozenBitMap):
-    pass
-
-
-bitset: TypeAlias = cast(Type[set], set)
-frozenbitset: TypeAlias = cast(Type[frozenset], frozenset)
 
 
 def cache(x: T) -> T:
@@ -37,12 +24,13 @@ class TokenType(Enum):
     NT = "<\w+>"
     EQ = "::="
     CALLS = "=>"
+    ASTERISK = "\\*"
     STRING = r"\"([^\\\"]|\\.)*\""
     COMMENT = "#.*+"
 
 
 ClosureItemLR0 = tuple[int, int]
-ClosureItemCLR = tuple[int, int, frozenbitset[int]]
+ClosureItemCLR = tuple[int, int, frozenset[int]]
 
 ClosureLR0 = tuple[ClosureItemLR0, ...]
 ClosureCLR = tuple[ClosureItemCLR, ...]
@@ -56,9 +44,10 @@ class ShiftReduceParser:
     idx_to_name: dict[int, str]
     terminals: tuple[str, ...]
     nonterminals: tuple[tuple[int, tuple[int, ...]], ...]
+    callback_info: tuple[tuple[str, tuple[int, ...]], ...]
     terminal_cutoff: int = field(init=False)
     rule_sets: tuple[tuple[tuple[int, tuple[int, ...]], ...], ...] = field(init=False)
-    firsts: list[frozenbitset[int]] = field(init=False)
+    firsts: list[frozenset[int]] = field(init=False)
     final_automaton: NDArray[np.int16] = field(init=False)
 
     @cache
@@ -103,13 +92,12 @@ class ShiftReduceParser:
         return tuple(new_closures)
 
     @cache
-    def lalr_expand_closure(self, lr0_closure: ClosureLR0, lalr_lookaheads: tuple[frozenbitset[int], ...]) -> tuple[ClosureLR0, list[bitset[int]]]:
+    def lalr_expand_closure(self, lr0_closure: ClosureLR0, lalr_lookaheads: tuple[frozenset[int], ...]) -> tuple[ClosureLR0, list[set[int]]]:
         lr0_closure = self.lr0_expand_closure(lr0_closure)
         lr_closure_to_idx = {closure: idx for idx, closure in enumerate(lr0_closure)}
 
         updated: set[int] = set()
-        lookaheads: list[bitset[int]] = [bitset() for _ in range(len(lr0_closure))]
-        # for lr0_item_idx, (lr0_item, lalr_input_lookahead) in enumerate(zip(lr0_closure, lalr_lookaheads)):
+        lookaheads: list[set[int]] = [set() for _ in range(len(lr0_closure))]
         for lr0_item_idx in range(len(lalr_lookaheads)):
             lr0_item = lr0_closure[lr0_item_idx]
             lalr_input_lookahead = lalr_lookaheads[lr0_item_idx]
@@ -134,7 +122,7 @@ class ShiftReduceParser:
             if next_idx < self.terminal_cutoff:
                 continue
 
-            lookahead: bitset[int] | frozenbitset[int]
+            lookahead: set[int] | frozenset[int]
             try:
                 lookahead = self.firsts[rule[rule_dot + 1]]
             except IndexError:
@@ -155,13 +143,13 @@ class ShiftReduceParser:
 
     def clr_make_automaton(self) -> tuple[dict[ClosureCLR, int], NDArray[np.int16]]:
         start_lr0_item = ((0, 0),)
-        start_clr_lookahead = (frozenbitset({self.eof_idx}),)
+        start_clr_lookahead = (frozenset({self.eof_idx}),)
         initial_lr0_closure, initial_clr_lookaheads = self.lalr_expand_closure(start_lr0_item, start_clr_lookahead)
 
         default_state = [0] * len(self.idx_to_name)
 
         initial_clr_closure = tuple(
-            (idx, dot, frozenbitset(clr_lookahead))
+            (idx, dot, frozenset(clr_lookahead))
             for (idx, dot), clr_lookahead in zip(initial_lr0_closure, initial_clr_lookaheads)
         )
 
@@ -190,11 +178,11 @@ class ShiftReduceParser:
             for symbol, subclosure in symbol_to_shift.items():
                 next_lr0_closure, next_clr_lookaheads = self.lalr_expand_closure(
                     tuple((a, b + 1) for a, b, _ in subclosure),
-                    tuple(frozenbitset(c) for _, _, c in subclosure)
+                    tuple(frozenset(c) for _, _, c in subclosure)
                 )
 
                 new_closure = tuple(
-                    (idx, dot, frozenbitset(clr_lookahead))
+                    (idx, dot, frozenset(clr_lookahead))
                     for (idx, dot), clr_lookahead in zip(next_lr0_closure, next_clr_lookaheads)
                 )
 
@@ -209,24 +197,24 @@ class ShiftReduceParser:
 
     def lalr_make_automaton(self) -> NDArray[np.int16]:
         start_lr0_item = ((0, 0),)
-        start_lalr_lookahead = (frozenbitset({self.eof_idx}),)
+        start_lalr_lookahead = (frozenset({self.eof_idx}),)
         initial_lr0_closure, initial_lalr_lookaheads = self.lalr_expand_closure(start_lr0_item, start_lalr_lookahead)
 
         default_state = [0] * len(self.idx_to_name)
 
         lr0_closures: list[ClosureLR0] = [initial_lr0_closure]
         lr0_closure_to_idx: dict[ClosureLR0, int] = {initial_lr0_closure: 0}
-        lalr_lookaheads: list[list[bitset[int]]] = [initial_lalr_lookaheads]
+        lalr_lookaheads: list[list[set[int]]] = [initial_lalr_lookaheads]
         lalr_automaton: dict[int, list[int]] = defaultdict(default_state.copy)
 
-        updated: bitset[int] = {0}
+        updated: set[int] = {0}
         while updated:
             current_closure_idx = updated.pop()
             current_closure = lr0_closures[current_closure_idx]
             current_lookaheads = lalr_lookaheads[current_closure_idx]
 
             symbol_to_shift: defaultdict[int, tuple[list[tuple[int, int]],
-                                                    list[bitset[int]]]] = defaultdict(lambda: ([], []))
+                                                    list[set[int]]]] = defaultdict(lambda: ([], []))
             symbol_to_reduce: defaultdict[int, list[tuple[int, int]]] = defaultdict(list)
             for item in zip(current_closure, current_lookaheads):
                 (idx, dot), lookahead = item
@@ -250,7 +238,7 @@ class ShiftReduceParser:
             for symbol, (shift_closure, shift_lookaheads) in symbol_to_shift.items():
                 next_lr0_closure, next_updated_lookaheads = self.lalr_expand_closure(
                     tuple(shift_closure),
-                    tuple(frozenbitset(sa) for sa in shift_lookaheads)
+                    tuple(frozenset(sa) for sa in shift_lookaheads)
                 )
                 next_closure_idx = lr0_closure_to_idx.setdefault(next_lr0_closure, len(lr0_closure_to_idx))
                 if next_closure_idx == len(lr0_closures):
@@ -350,6 +338,127 @@ class ShiftReduceParser:
 
                 stack.append((action, symbol))
 
+    def generate_cpp(self) -> str:
+        state_bodies = []
+        for idx, state in enumerate(self.final_automaton):
+            labels_by_inputs: dict[str, set[int]] = defaultdict(set)
+            for symbol, action in enumerate(state):
+                if symbol >= self.terminal_cutoff:
+                    break
+
+                if action == 0:
+                    continue
+
+                if action > 0:
+                    case_body = f"""
+                            stack.emplace_back({action - 1}, symbol_wrapper<{symbol}>(std::move(token)));
+                            goto shift_{action - 1}
+                        """
+                    case_body = f"goto shift_{idx}_{action - 1}"
+                    action_label = f"shift_{action - 1}"
+                elif action < 0:
+                    action_label = f"reduce_{-action - 1}"
+
+                labels_by_inputs[action_label].add(symbol)
+
+            switch_cases: list[str] = []
+            for label, inputs in labels_by_inputs.items():
+                cases = "\n".join(f"case {symbol}:" for symbol in inputs)
+                switch_cases.append(
+                    f"""
+                    {cases}
+                        goto {label};
+                    """
+                )
+
+            switch_body = "\n".join(switch_cases)
+            state_bodies.append(
+                f"""
+                state_{idx}:
+                    switch (std::get<0>(stack.back()))
+                    {{
+                        {switch_body}
+                    }}
+                """
+            )
+
+        gotos: list[str] = []
+        for symbol in range(self.terminal_cutoff, len(self.idx_to_name)):
+            states = np.nonzero(self.final_automaton[:, symbol])
+            case_body_cache: dict[str, list[int]] = defaultdict(list)
+            for state in states[0]:
+                body = f"""
+                    stack.emplace_back({self.final_automaton[state, symbol] - 1}, std::move(result));
+                    goto state_{self.final_automaton[state, symbol] - 1};
+                """
+                case_body_cache[body].append(state)
+
+            case_bodies: list[str] = []
+            for body, state_indices in case_body_cache.items():
+                labels = "\n".join(f"case {state}:" for state in state_indices)
+                case_bodies.append(
+                    f"""
+                    {labels}
+                        {body}
+                    """
+                )
+
+            switch_body = "\n".join(case_bodies)
+            gotos.append(
+                f"""
+                goto_{symbol}:
+                    switch (std::get<0>(stack.back()))
+                    {{
+                        {switch_body}
+                    }}
+                """
+            )
+
+        reductions_cache: dict[str, list[int]] = defaultdict(list)
+        for rule_idx, (lhs, rhs) in enumerate(self.nonterminals):
+            rule_length = len(rhs)
+            callback_name, callback_args = self.callback_info[rule_idx]
+            if callback_name:
+                arguments = ", ".join(
+                    f"std::move(*std::get_if<{rhs[arg]}>(&std::get<1>(stack[{rule_length - arg - 1}])))"
+                    for arg in callback_args
+                )
+                callback = f"state.{callback_name}({arguments})"
+            else:
+                callback = ""
+
+            body = f"""
+                result = symbol_wrapper<{lhs}>({callback});
+                stack.resize(stack.size() - {rule_length});
+                goto goto_{lhs};
+            """
+            reductions_cache[body].append(rule_idx)
+
+        goto_actions = "\n".join(gotos)
+
+
+        reductions: list[str] = []
+        for body, rule_indices in reductions_cache.items():
+            labels = "\n".join(f"reduce_{rule_idx}:" for rule_idx in rule_indices)
+            reductions.append(
+                f"""
+                {labels}
+                    {body}
+                """
+            )
+        reduce_actions = "\n".join(reductions)
+        state_machine = "\n".join(state_bodies)
+        return f"""
+            int main()
+            {{
+                goto state_0;
+                {goto_actions}
+                {reduce_actions}
+                {state_machine}
+                return 0;
+            }}
+        """
+
     def __post_init__(self):
         rule_sets: list[tuple[tuple[int, tuple[int, ...]], ...]] = [None] * len(self.idx_to_name)
         for symbol in list(dict.fromkeys(key for key, _ in self.nonterminals)):
@@ -357,14 +466,14 @@ class ShiftReduceParser:
 
         terminal_cutoff = len(self.terminals)
 
-        firsts: list[frozenbitset[int]] = []
+        firsts: list[frozenset[int]] = []
         for symbol in self.idx_to_name:
             if symbol < terminal_cutoff:
-                firsts.append(frozenbitset({symbol}))
+                firsts.append(frozenset({symbol}))
             else:
-                first_set = bitset()
+                first_set = set()
 
-                first_passed: bitset[int] = bitset()
+                first_passed: set[int] = set()
                 first_stack: list[int] = [symbol]
                 while first_stack:
                     current = first_stack.pop(0)
@@ -383,17 +492,13 @@ class ShiftReduceParser:
                         else:
                             first_stack.append(first)
 
-                firsts.append(frozenbitset(first_set))
+                firsts.append(frozenset(first_set))
 
         self.terminal_cutoff = terminal_cutoff
         self.rule_sets = tuple(rule_sets)
         self.firsts = firsts
 
-        # a, b = self.clr_make_automaton()
-        # self.final_automaton = self.clr_to_lalr_automaton(a, b)
         self.final_automaton = self.lalr_make_automaton()
-
-        # assert np.all(self.clr_to_lalr_automaton(a, b) == self.lalr_make_automaton())
 
     def __hash__(self) -> int:
         return id(self)
@@ -407,7 +512,7 @@ def parse(text: str) -> ShiftReduceParser:
     idx_to_name: dict[int, str] = {}
     terminals: dict[int, str] = {}
     nonterminals: list[tuple[int, tuple[int, ...]]] = []
-    callbacks: list[str] = []
+    callback_info: list[tuple[str, tuple[int, ...]]] = []
 
     after_calls = False
     terminal_names = []
@@ -460,7 +565,7 @@ def parse(text: str) -> ShiftReduceParser:
             eq_or_calls = tokens.pop(0)
             assert eq_or_calls.type in (TokenType.EQ, TokenType.CALLS)
 
-            callback: str = None
+            callback_name: str = None
             if eq_or_calls.type is TokenType.CALLS:
                 callback_token = tokens.pop(0)
                 assert callback_token.type is TokenType.T
@@ -468,7 +573,7 @@ def parse(text: str) -> ShiftReduceParser:
                 eq = tokens.pop(0)
                 assert eq.type is TokenType.EQ
 
-                callback = callback_token.text
+                callback_name = callback_token.text
 
             rhs = tokens[:]
             for idx, token in enumerate(tokens):
@@ -483,11 +588,21 @@ def parse(text: str) -> ShiftReduceParser:
 
             del tokens[:len(rhs)]
 
-            assert all(token.type in (TokenType.T, TokenType.NT) for token in rhs)
+            callback_args: list[int] = []
+            filtered_rhs: list[Token[TokenType]] = []
+            for token in rhs:
+                if token.type is TokenType.ASTERISK:
+                    callback_args.append(len(filtered_rhs) - 1)
+                else:
+                    filtered_rhs.append(token)
+
+            rhs = [token for token in filtered_rhs if token.type in (TokenType.NT, TokenType.T)]
 
             nonterminals.append((lhs_idx, tuple(map(name_to_idx.get, map(lambda x: x.text, rhs)))))
+            callback_info.append((callback_name, tuple(callback_args)))
 
     nonterminals.insert(0, (start_idx, (nonterminals[0][0],)))
+    callback_info.insert(0, (None, []))
 
     assert len(name_to_idx) == terminal_count + nonterminal_count
 
@@ -497,5 +612,6 @@ def parse(text: str) -> ShiftReduceParser:
         name_to_idx=name_to_idx,
         idx_to_name=idx_to_name,
         terminals=tuple(terminals.values()),
-        nonterminals=tuple(nonterminals)
+        nonterminals=tuple(nonterminals),
+        callback_info=tuple(callback_info)
     )

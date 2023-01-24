@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from multiprocessing import freeze_support
 from tabulate import tabulate
 from pandas import DataFrame
 from pathlib import Path
@@ -31,6 +30,9 @@ if __name__ == "__main__":
         ]
         lines.append(" ".join(parts))
     print("\n".join(lines).replace("<", "").replace(">", "").replace("-", "->"), file=Path("test.bnf").open("w"))
+
+    
+    Path("test.cpp").write_text(parser.generate_cpp())
 
     parser.parse(
         """

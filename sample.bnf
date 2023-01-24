@@ -159,7 +159,7 @@ LIT_F64 ::= "(\d+.\d+|\d+.|.\d+|\d+)f64"
 <log_and> ::= <log_or>
 
 # Logical ||
-<log_or> => test ::= <log_or> LOG_OR <sum>
+<log_or> => test ::= <log_or> LOG_OR * <sum>
 <log_or> ::= <sum>
 
 # Arithmetic + -
