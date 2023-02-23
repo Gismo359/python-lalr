@@ -504,7 +504,7 @@ class ShiftReduceParser:
         return id(self)
 
 
-def parse(text: str) -> ShiftReduceParser:
+def parse(text: str, start_symbol: str = None) -> ShiftReduceParser:
     tokens = tokenize(TokenType, text)
     tokens = list(filter(lambda x: x.type is not TokenType.COMMENT, tokens))
 
@@ -529,6 +529,9 @@ def parse(text: str) -> ShiftReduceParser:
 
     eof_idx = 0
     start_idx = terminal_count
+
+    if start_symbol is not None:
+        start_idx += nonterminal_names.index(start_symbol)
 
     names = dict.fromkeys(terminal_names + nonterminal_names)
     for name in names:
