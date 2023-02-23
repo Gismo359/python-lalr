@@ -20,13 +20,13 @@ def cache(x: T) -> T:
 
 
 class TokenType(Enum):
-    T = "\w+"
-    NT = "<\w+>"
-    EQ = "::="
-    CALLS = "=>"
-    ASTERISK = "\\*"
+    T = r"\w+"
+    NT = r"<\w+>"
+    EQ = r"::="
+    CALLS = r"=>"
+    ASTERISK = r"\*"
     STRING = r"\"([^\\\"]|\\.)*\""
-    COMMENT = "#.*+"
+    COMMENT = r"#.*+"
 
 
 ClosureItemLR0 = tuple[int, int]
