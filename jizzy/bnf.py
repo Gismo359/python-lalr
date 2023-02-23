@@ -305,7 +305,7 @@ class ShiftReduceParser:
 
     @cache
     def make_token_type(self) -> Type[Enum]:
-        return Enum("enum", {(f"group_{key}", value) for key, value in enumerate(self.terminals)})  # type: ignore
+        return Enum("enum", ((f"group_{key}", value) for key, value in enumerate(self.terminals)))  # type: ignore
 
     def parse(self, text: str):
         token_type = self.make_token_type()
