@@ -20,13 +20,13 @@ def cache(x: T) -> T:
 
 
 class TokenType(Enum):
-    T = "\w+"
-    NT = "<\w+>"
-    EQ = "::="
-    CALLS = "=>"
-    ASTERISK = "\\*"
+    T = r"\w+"
+    NT = r"<\w+>"
+    EQ = r"::="
+    CALLS = r"=>"
+    ASTERISK = r"\*"
     STRING = r"\"([^\\\"]|\\.)*\""
-    COMMENT = "#.*+"
+    COMMENT = r"#.*+"
 
 
 ClosureItemLR0 = tuple[int, int]
@@ -305,7 +305,7 @@ class ShiftReduceParser:
 
     @cache
     def make_token_type(self) -> Type[Enum]:
-        return Enum("enum", {(f"group_{key}", value) for key, value in enumerate(self.terminals)})  # type: ignore
+        return Enum("enum", ((f"group_{key}", value) for key, value in enumerate(self.terminals)))  # type: ignore
 
     def parse(self, text: str):
         token_type = self.make_token_type()
@@ -504,7 +504,7 @@ class ShiftReduceParser:
         return id(self)
 
 
-def parse(text: str) -> ShiftReduceParser:
+def parse(text: str, start_symbol: str = None) -> ShiftReduceParser:
     tokens = tokenize(TokenType, text)
     tokens = list(filter(lambda x: x.type is not TokenType.COMMENT, tokens))
 
@@ -529,6 +529,9 @@ def parse(text: str) -> ShiftReduceParser:
 
     eof_idx = 0
     start_idx = terminal_count
+
+    if start_symbol is not None:
+        start_idx += nonterminal_names.index(start_symbol)
 
     names = dict.fromkeys(terminal_names + nonterminal_names)
     for name in names:
