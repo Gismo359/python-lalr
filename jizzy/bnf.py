@@ -9,7 +9,7 @@ import functools
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Type, TypeVar, cast
+from typing import Any, Callable, Type, TypeVar, cast
 
 
 T = TypeVar("T")
@@ -307,36 +307,55 @@ class ShiftReduceParser:
     def make_token_type(self) -> Type[Enum]:
         return Enum("enum", ((f"group_{key}", value) for key, value in enumerate(self.terminals)))  # type: ignore
 
-    def parse(self, text: str):
+    def parse(self, text: str, engine: Any):
         token_type = self.make_token_type()
         tokens = tokenize(token_type, text)
         terminal_types = map(lambda x: x.type.name, tokens)
         terminal_indices = map(lambda x: int(x.split("_")[1]), terminal_types)
         terminal_inputs = list(terminal_indices) + [self.eof_idx]
 
-        stack = [(1, 0)]
-        while terminal_inputs:
-            token_idx = terminal_inputs.pop(0)
+        def run_callback(idx: int, arguments: list[Any]) -> Any:
+            callback_name, callback_indices = self.callback_info[idx]
+            assert callback_name is not None, f"No callback for rule #{idx}"
 
-            action = self.final_automaton[stack[-1][0] - 1, token_idx]
+            callback = getattr(engine, callback_name)
+
+            all_args = [arg for arg in arguments]
+
+            return callback(
+                all_args[0].start,
+                all_args[-1].stop,
+                *[arguments[idx] for idx in callback_indices]
+            )
+
+        stack: list[tuple[int, Any]] = [(1, None)]
+        while terminal_inputs:
+            token_type_idx = terminal_inputs.pop(0)
+
+            action = self.final_automaton[stack[-1][0] - 1, token_type_idx]
             assert action != 0
 
             if action > 0:
-                stack.append((action, token_idx))
+                result = run_callback(token_type_idx, [tokens.pop(0)])
+                stack.append((action, result))
 
             if action == -1:
-                assert token_idx == self.eof_idx
-                return ":)"
+                assert token_type_idx == self.eof_idx
+                return stack[-1][1]
 
-            token_idx = terminal_inputs[0]
-            while (action := self.final_automaton[stack[-1][0] - 1, token_idx]) < -1:
+            token_type_idx = terminal_inputs[0]
+            while (action := self.final_automaton[stack[-1][0] - 1, token_type_idx]) < -1:
                 symbol, rule = self.nonterminals[-action - 1]
+                arg_stack = stack[-len(rule):]
                 del stack[-len(rule):]
 
+                arguments = [arg for _, arg in arg_stack]
+
+                result = run_callback(self.terminal_cutoff - action - 1, arguments)
                 action = self.final_automaton[stack[-1][0] - 1, symbol]
                 assert action > 0
 
-                stack.append((action, symbol))
+                stack.append((action, result))
 
     def generate_cpp(self) -> str:
         state_bodies = []
@@ -435,7 +454,6 @@ class ShiftReduceParser:
             reductions_cache[body].append(rule_idx)
 
         goto_actions = "\n".join(gotos)
-
 
         reductions: list[str] = []
         for body, rule_indices in reductions_cache.items():
@@ -553,59 +571,56 @@ def parse(text: str, start_symbol: str = None) -> ShiftReduceParser:
 
         lhs_idx = name_to_idx.setdefault(lhs.text, len(name_to_idx))
 
-        if lhs.type is TokenType.T:
+        eq_or_calls = tokens.pop(0)
+        assert eq_or_calls.type in (TokenType.EQ, TokenType.CALLS)
+
+        callback_name: str = None
+        if eq_or_calls.type is TokenType.CALLS:
+            callback_token = tokens.pop(0)
+            assert callback_token.type is TokenType.T
+
             eq = tokens.pop(0)
             assert eq.type is TokenType.EQ
 
-            pattern = tokens.pop(0)
+            callback_name = callback_token.text
+
+        rhs = tokens[:]
+        for idx, token in enumerate(tokens):
+            if token.type not in (TokenType.EQ, TokenType.CALLS):
+                continue
+
+            assert idx != 0
+
+            rhs = tokens[:idx - 1]
+
+            break
+
+        del tokens[:len(rhs)]
+
+        callback_args: list[int] = []
+        filtered_rhs: list[Token[TokenType]] = []
+        for token in rhs:
+            if token.type is TokenType.ASTERISK:
+                callback_args.append(len(filtered_rhs) - 1)
+            else:
+                filtered_rhs.append(token)
+
+        rhs = [token for token in filtered_rhs if token.type in (TokenType.NT, TokenType.T)]
+
+        if lhs.type is TokenType.T:
+            pattern = filtered_rhs[0]
             assert pattern.type is TokenType.STRING
 
             terminals[lhs_idx] = ast.literal_eval(pattern.text)
 
             regex.compile(terminals[lhs_idx])
-
-        if lhs.type is TokenType.NT:
-            eq_or_calls = tokens.pop(0)
-            assert eq_or_calls.type in (TokenType.EQ, TokenType.CALLS)
-
-            callback_name: str = None
-            if eq_or_calls.type is TokenType.CALLS:
-                callback_token = tokens.pop(0)
-                assert callback_token.type is TokenType.T
-
-                eq = tokens.pop(0)
-                assert eq.type is TokenType.EQ
-
-                callback_name = callback_token.text
-
-            rhs = tokens[:]
-            for idx, token in enumerate(tokens):
-                if token.type not in (TokenType.EQ, TokenType.CALLS):
-                    continue
-
-                assert idx != 0
-
-                rhs = tokens[:idx - 1]
-
-                break
-
-            del tokens[:len(rhs)]
-
-            callback_args: list[int] = []
-            filtered_rhs: list[Token[TokenType]] = []
-            for token in rhs:
-                if token.type is TokenType.ASTERISK:
-                    callback_args.append(len(filtered_rhs) - 1)
-                else:
-                    filtered_rhs.append(token)
-
-            rhs = [token for token in filtered_rhs if token.type in (TokenType.NT, TokenType.T)]
-
+        else:
             nonterminals.append((lhs_idx, tuple(map(name_to_idx.get, map(lambda x: x.text, rhs)))))
-            callback_info.append((callback_name, tuple(callback_args)))
+        callback_info.append((callback_name, tuple(callback_args)))
 
     nonterminals.insert(0, (start_idx, (nonterminals[0][0],)))
-    callback_info.insert(0, (None, []))
+    callback_info.insert(0, (None, ()))
+    callback_info.insert(len(terminals), (None, ()))
 
     assert len(name_to_idx) == terminal_count + nonterminal_count
 

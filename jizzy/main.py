@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from tabulate import tabulate
-from pandas import DataFrame
-from pathlib import Path
+# from tabulate import tabulate
+# from pandas import DataFrame
+# from pathlib import Path
 
-from jizzy.bnf import parse
+# from jizzy.bnf import parse
+# from jizzy.engine import Engine
+from jizzy.grammar import T, NT
 
 
 if __name__ == "__main__":
@@ -31,14 +33,17 @@ if __name__ == "__main__":
         lines.append(" ".join(parts))
     print("\n".join(lines).replace("<", "").replace(">", "").replace("-", "->"), file=Path("test.bnf").open("w"))
 
-    
-    Path("test.cpp").write_text(parser.generate_cpp())
+    # Path("test.cpp").write_text(parser.generate_cpp())
 
-    parser.parse(
+    result = parser.parse(
         """
-        {
-            a + c;
-            b + a * d - f;
-        }   
-        """
+            a + c
+            b + a * d - f
+            if {f(a - v, asdasd)}
+
+            A: B() {}
+        """,
+        Engine()
     )
+
+    # print(result)

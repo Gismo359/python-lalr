@@ -1,22 +1,9 @@
- -> statement_list
-statement_list -> statement_list statement
-statement_list -> statement
-statement -> RETURN expression SEMICOLON
-statement -> expression SEMICOLON
-statement -> block
-statement -> if
-statement -> for
-statement -> while
-statement -> struct
-statement -> function
-block -> OC statement_list CC
-block -> OC CC
-if -> IF OP expression CP statement
-if -> IF OP expression CP statement ELSE statement
-for -> FOR OP expression IN expression CP statement
-while -> WHILE OP expression CP statement
-struct -> STRUCT expression block
-function -> expression block
+ -> program
+program -> expression_list
+expression_list -> expression_list expression
+expression_list -> expression
+expression -> assignment SEMICOLON
+expression -> assignment COMMA
 expression -> assignment
 assignment -> expression ASS_IGN mapping
 assignment -> expression ASS_ADD mapping
@@ -58,6 +45,19 @@ product -> product MATH_MUL base_expression
 product -> product MATH_DIV base_expression
 product -> product MATH_MOD base_expression
 product -> base_expression
+paren_block -> OP expression_list CP
+paren_block -> OP CP
+brace_block -> OB expression_list CB
+brace_block -> OB CB
+curly_block -> OC expression_list CC
+curly_block -> OC CC
+base_expression -> IF
+base_expression -> ELSE
+base_expression -> FOR
+base_expression -> IN
+base_expression -> WHILE
+base_expression -> STRUCT
+base_expression -> RETURN
 base_expression -> IDENTIFIER
 base_expression -> LIT_S8
 base_expression -> LIT_S16
@@ -85,10 +85,7 @@ base_expression -> base_expression INC
 base_expression -> base_expression DEC
 base_expression -> base_expression DOT IDENTIFIER
 base_expression -> base_expression DOUBLECOLON IDENTIFIER
-base_expression -> base_expression OB argument_list CB
-base_expression -> base_expression OP argument_list CP
-base_expression -> base_expression OB CB
-base_expression -> base_expression OP CP
-argument_list -> argument_list COMMA expression
-argument_list -> expression
+base_expression -> base_expression paren_block
+base_expression -> base_expression brace_block
+base_expression -> base_expression curly_block
 base_expression -> OP expression CP

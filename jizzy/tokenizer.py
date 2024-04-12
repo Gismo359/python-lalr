@@ -16,6 +16,9 @@ class Token(Generic[T]):
     text: str
     type: T
 
+    def __str__(self) -> str:
+        return self.text
+
 
 def make_token(token_type: Type[T], match: Match) -> Token[T]:
     start = match.start()
