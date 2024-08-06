@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from typing import TypeVar, Generic, Iterator
 from enum import IntEnum, auto
 
-from jizzy.tokenizer import Token
+from jizzy.grammar import Token, Node
 
-T = TypeVar("T")
+T = TypeVar("T", bound=Node)
 
 
 class ListBreakType(IntEnum):
@@ -25,13 +25,7 @@ def indent(any: T) -> str:
     return "\n".join("    " + line for line in str(any).splitlines())
 
 
-@dataclass
-class Node:
-    start: int
-    stop: int
-
-
-@dataclass
+@dataclass(kw_only=True)
 class List(Node, Generic[T]):
     items: list[T]
 
@@ -45,12 +39,12 @@ class List(Node, Generic[T]):
         pass
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Expression(Node):
     pass
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UnaryPrefix(Expression):
     op: Token
     expression: Expression
@@ -59,7 +53,7 @@ class UnaryPrefix(Expression):
         return f"{self.op}{self.expression}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UnaryPostfix(Expression):
     op: Token
     expression: Expression
@@ -68,7 +62,7 @@ class UnaryPostfix(Expression):
         return f"{self.expression}{self.op}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BinaryExpression(Expression):
     lhs: Expression
     op: Token
@@ -78,7 +72,7 @@ class BinaryExpression(Expression):
         return f"{self.lhs} {self.op} {self.rhs}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Statement(Node):
     expression: Expression
     terminator: Token = None
@@ -90,7 +84,7 @@ class Statement(Node):
             return f"{self.expression}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Block(Node):
     brace_type: BraceType
     break_type: ListBreakType
@@ -123,7 +117,7 @@ class Block(Node):
                 return f"{start}{body}{stop}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BlockExpression(Expression):
     expression: Expression
     block: Block
@@ -132,19 +126,12 @@ class BlockExpression(Expression):
         return f"{self.expression}{self.block}"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Program(Node):
     items: List[Expression]
 
     def __str__(self) -> str:
         return "\n".join(map(str, self.items))
-
-
-@dataclass
-class DummyNode(Node):
-    # TODO@Daniel:
-    #   Remove this when everything else is implemented
-    pass
 
 
 @dataclass
@@ -168,16 +155,6 @@ class Engine:
     ) -> Token:
         self.indentation -= 1
         return token
-
-    def nothing(
-        self,
-        start: int,
-        stop: int
-    ):
-        return DummyNode(
-            start=start,
-            stop=stop
-        )
 
     def identity(
         self,

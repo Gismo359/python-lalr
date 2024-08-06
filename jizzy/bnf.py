@@ -20,12 +20,12 @@ def cache(x: T) -> T:
 
 
 class TokenType(Enum):
+    STRING = r"r?\"([^\\\"]|\\.)*\""
     T = r"\w+"
     NT = r"<\w+>"
     EQ = r"::="
     CALLS = r"=>"
     ASTERISK = r"\*"
-    STRING = r"\"([^\\\"]|\\.)*\""
     COMMENT = r"#.*+"
 
 
@@ -534,7 +534,28 @@ def parse(text: str, start_symbol: str = None) -> ShiftReduceParser:
 
     after_calls = False
     terminal_names = []
-    nonterminal_names = []
+    nonterminal_names = [
+        "<program>",
+        "<expression_list>",
+        "<expression>",
+        "<assignment>",
+        "<mapping>",
+        "<bit_shift>",
+        "<spaceship>",
+        "<comparison>",
+        "<equality>",
+        "<bit_and>",
+        "<bit_xor>",
+        "<bit_or>",
+        "<log_and>",
+        "<log_or>",
+        "<sum>",
+        "<product>",
+        "<paren_block>",
+        "<brace_block>",
+        "<curly_block>",
+        "<base_expression>"
+    ]
     for token in tokens:
         if token.type is TokenType.T and not after_calls:
             terminal_names.append(token.text)

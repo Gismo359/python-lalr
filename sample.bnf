@@ -57,7 +57,7 @@ MATH_MOD => identity ::= "%"*
 DEC => identity ::= "--"*
 INC => identity ::= "\\+\\+"*
 
-IDENTIFIER => identity ::= "\w+"*
+IDENTIFIER => identity ::= r"\w+"*
 
 LIT_S8  => identity ::= "u8\"([^\\\"]|\\.)*\""*
 LIT_S16 => identity ::= "u16\"([^\\\"]|\\.)*\""*
@@ -67,18 +67,18 @@ LIT_C8  => identity ::= "u8\'([^\\\']|\\.)*\'"*
 LIT_C16 => identity ::= "u16\'([^\\\']|\\.)*\'"*
 LIT_C32 => identity ::= "u32\'([^\\\']|\\.)*\'"*
 
-LIT_I8  => identity ::= "\d+i8"*
-LIT_I16 => identity ::= "\d+i16"*
-LIT_I32 => identity ::= "\d+i32"*
-LIT_I64 => identity ::= "\d+i64"*
+LIT_I8  => identity ::= r"\d+i8"*
+LIT_I16 => identity ::= r"\d+i16"*
+LIT_I32 => identity ::= r"\d+i32"*
+LIT_I64 => identity ::= r"\d+i64"*
 
-LIT_U8  => identity ::= "\d+u8"*
-LIT_U16 => identity ::= "\d+u16"*
-LIT_U32 => identity ::= "\d+u32"*
-LIT_U64 => identity ::= "\d+u64"*
+LIT_U8  => identity ::= r"\d+u8"*
+LIT_U16 => identity ::= r"\d+u16"*
+LIT_U32 => identity ::= r"\d+u32"*
+LIT_U64 => identity ::= r"\d+u64"*
 
-LIT_F32 => identity ::= "(\d+.\d+|\d+.|.\d+|\d+)f32"*
-LIT_F64 => identity ::= "(\d+.\d+|\d+.|.\d+|\d+)f64"*
+LIT_F32 => identity ::= r"(\d+.\d+|\d+.|.\d+|\d+)f32"*
+LIT_F64 => identity ::= r"(\d+.\d+|\d+.|.\d+|\d+)f64"*
 
 <program> => finalize_program ::= <expression_list>*
 
