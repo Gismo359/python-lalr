@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Iterator
+from typing import TypeVar
 from enum import IntEnum, auto
 
-from jizzy.grammar import Token, Node
+from jizzy.builder import Builder
+from jizzy.common import List, Node, Token
+
 
 T = TypeVar("T", bound=Node)
 
@@ -20,23 +24,7 @@ class BraceType(IntEnum):
 
 
 def indent(any: T) -> str:
-    if any is None:
-        return ""
     return "\n".join("    " + line for line in str(any).splitlines())
-
-
-@dataclass(kw_only=True)
-class List(Node, Generic[T]):
-    items: list[T]
-
-    def append(self, item: T):
-        self.items.append(item)
-
-    def __iter__(self) -> Iterator[T]:
-        return iter(self.items)
-
-    def __str__(self) -> str:
-        pass
 
 
 @dataclass(kw_only=True)
@@ -75,7 +63,7 @@ class BinaryExpression(Expression):
 @dataclass(kw_only=True)
 class Statement(Node):
     expression: Expression
-    terminator: Token = None
+    terminator: Token | None = None
 
     def __str__(self) -> str:
         if self.terminator is not None:
@@ -85,10 +73,15 @@ class Statement(Node):
 
 
 @dataclass(kw_only=True)
+class ExpressionList(List[Expression]):
+    def __str__(self) -> str:
+        return "\n".join(map(str, self))
+
+
+@dataclass(kw_only=True)
 class Block(Node):
     brace_type: BraceType
-    break_type: ListBreakType
-    items: List[Expression]
+    body: ExpressionList
 
     def __str__(self) -> str:
         match self.brace_type:
@@ -102,19 +95,7 @@ class Block(Node):
                 start = "{"
                 stop = "}"
 
-        if self.items is None:
-            return f"{start}{stop}"
-
-        match self.break_type:
-            case ListBreakType.Wrap:
-                # TODO@Daniel: Implement this some day
-                return ""
-            case ListBreakType.Always:
-                body = "\n".join(map(str, self.items))
-                return f"{start}\n{indent(body)}\n{stop}"
-            case ListBreakType.Never:
-                body = " ".join(map(str, self.items))
-                return f"{start}{body}{stop}"
+        return f"{start}\n{indent(self.body)}\n{stop}"
 
 
 @dataclass(kw_only=True)
@@ -126,84 +107,44 @@ class BlockExpression(Expression):
         return f"{self.expression}{self.block}"
 
 
-@dataclass(kw_only=True)
-class Program(Node):
-    items: List[Expression]
-
-    def __str__(self) -> str:
-        return "\n".join(map(str, self.items))
-
-
-@dataclass
-class Engine:
-    indentation: int = 0
-
-    def indent(
-        self,
-        start: int,
-        stop: int,
-        token: Token
-    ) -> Token:
-        self.indentation += 1
-        return token
-
-    def unindent(
-        self,
-        start: int,
-        stop: int,
-        token: Token
-    ) -> Token:
-        self.indentation -= 1
-        return token
-
-    def identity(
-        self,
-        start: int,
-        stop: int,
-        any: T
-    ) -> T:
-        return any
-
+class JizzBuilder(Builder):
     def make_paren_block(
         self,
         start: int,
         stop: int,
-        items: List[Expression] = None
+        body: ExpressionList
     ) -> Block:
         return Block(
             start=start,
             stop=stop,
             brace_type=BraceType.Round,
-            break_type=ListBreakType.Always,
-            items=items
+            body=body
         )
 
     def make_brace_block(
         self,
         start: int,
         stop: int,
-        items: List[Expression] = None
+        body: ExpressionList
     ) -> Block:
         return Block(
             start=start,
             stop=stop,
             brace_type=BraceType.Square,
-            break_type=ListBreakType.Always,
-            items=items
+            body=body
         )
 
     def make_curly_block(
         self,
         start: int,
         stop: int,
-        items: List[Expression] = None
+        body: ExpressionList
     ) -> Block:
         return Block(
             start=start,
             stop=stop,
             brace_type=BraceType.Curly,
-            break_type=ListBreakType.Always,
-            items=items
+            body=body
         )
 
     def make_block_expression(
@@ -269,7 +210,7 @@ class Engine:
         start: int,
         stop: int,
         expression: Expression,
-        terminator: Token = None
+        terminator: Token | None = None
     ) -> Statement:
         return Statement(
             start=start,
@@ -282,35 +223,23 @@ class Engine:
         self,
         start: int,
         stop: int,
-        expression: Expression
-    ) -> List[Expression]:
-        return List[Expression](
+        expression: Expression | None = None
+    ) -> ExpressionList:
+        return ExpressionList(
             start=start,
             stop=stop,
-            items=[expression]
+            items=[expression] if expression is not None else []
         )
 
     def expand_expression_list(
         self,
         start: int,
         stop: int,
-        list: List[Expression],
+        list: ExpressionList,
         expression: Expression
-    ) -> List[Expression]:
-        return List[Expression](
+    ) -> ExpressionList:
+        return ExpressionList(
             start=start,
             stop=stop,
             items=list.items + [expression]
-        )
-
-    def finalize_program(
-        self,
-        start: int,
-        stop: int,
-        items: List[Expression]
-    ) -> Program:
-        return Program(
-            start=start,
-            stop=stop,
-            items=items
         )

@@ -4,24 +4,41 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jizzy"
-version = "0.0.1"
-authors = [
-    { name = "Daniel Atanasov", email=""}
-]
-description = ""
+version = "0.0.2"
+authors = [{ name = "Daniel Atanasov" }]
+description = "A library for generating LALR parsers with minimal bloat"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Operating System :: OS Independent",
 ]
-dependencies = [
-    "regex",
-    "numpy",
-    "tabulate",
-    "pandas",
-]
-[project.urls]
-"Homepage" = "https://github.com/Daniel-Atanasov/python-lalr"
-"Bug Tracker" = "https://github.com/Daniel-Atanasov/python-lalr/issues"
 
+dependencies = ["regex", "numpy"]
+
+[project.urls]
+"Homepage" = "https://github.com/Gismo359/python-lalr"
+"Bug Tracker" = "https://github.com/Gismo359/python-lalr/issues"
+
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+show_column_numbers = true
+pretty = true
+strict_optional = false
+no_implicit_optional = true
+check_untyped_defs = true
+files = "jizzy/**/*.py"
+# enable_incomplete_feature = ["Unpack", "TypeVarTuple"]
+
+[tool.hatch.envs.test]
+dependencies = ["coverage[toml]", "pytest", "pytest-cov"]
+
+[tool.hatch.envs.test.scripts]
+cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov tests'
+
+[[tool.hatch.envs.test.matrix]]
+python = ["312"]

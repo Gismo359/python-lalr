@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "Run",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "jizzy.main",
